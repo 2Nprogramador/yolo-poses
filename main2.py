@@ -9,12 +9,12 @@ from mediapipe.tasks.python import vision
 import mediapipe as mp
 
 # ==========================================
-# 1. Configurações
+# 1. Configurações e Layout
 # ==========================================
 
-st.set_page_config(page_title="Processamento Offline - Agachamento", layout="wide")
-st.title("🏋️ Análise Completa de Agachamento")
-st.markdown("Este modo processa o vídeo inteiro primeiro para garantir **reprodução fluida** no final.")
+st.set_page_config(page_title="Upload & Análise AI", layout="wide")
+st.title("🏋️ Análise de Agachamento (Upload)")
+st.markdown("Faça o upload do seu vídeo MP4 para análise completa com IA.")
 
 # Funções de Threshold
 def get_thresholds_beginner():
@@ -24,7 +24,7 @@ def get_thresholds_pro():
     return {'NORMAL': (0, 32), 'TRANS': (35, 65), 'PASS': (80, 95), 'TOO_LOW': 95}
 
 # ==========================================
-# 2. Funções Matemáticas e Desenho
+# 2. Funções Matemáticas
 # ==========================================
 
 def calculate_angle(a, b, c):
@@ -51,28 +51,49 @@ def draw_pose_landmarks(frame, landmarks, w, h):
         cv2.circle(frame, (x, y), 4, (0, 0, 255), -1)
 
 # ==========================================
-# 3. Interface e Execução
+# 3. Interface e Upload
 # ==========================================
 
 st.sidebar.header("Configurações")
 mode = st.sidebar.radio("Nível:", ["Iniciante", "Pro"])
 limits = get_thresholds_beginner() if mode == "Iniciante" else get_thresholds_pro()
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-VIDEO_PATH = os.path.join(BASE_DIR, "gravando4.mp4")
-MODEL_PATH = os.path.join(BASE_DIR, "pose_landmarker_lite.task")
+# --- MUDANÇA 1: Componente de Upload ---
+uploaded_file = st.sidebar.file_uploader("Carregar Vídeo (MP4/MOV)", type=["mp4", "mov", "avi"])
 
-# --- MUDANÇA 1: Alterado para .webm (formato nativo de web) ---
+# Paths Locais
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "pose_landmarker_lite.task")
 OUTPUT_PATH = os.path.join(BASE_DIR, "output_final.webm")
 
-run_analysis = st.sidebar.button("⚙️ Processar Vídeo Completo")
+# Variável para controlar qual vídeo processar
+video_source_path = None
+
+if uploaded_file is not None:
+    # --- MUDANÇA 2: Criar arquivo temporário para o OpenCV ler ---
+    tfile = tempfile.NamedTemporaryFile(delete=False) 
+    tfile.write(uploaded_file.read())
+    video_source_path = tfile.name
+    st.sidebar.success("Vídeo carregado!")
+else:
+    # Opcional: Manter um vídeo padrão caso o usuário não suba nada
+    default_video = os.path.join(BASE_DIR, "gravando4.mp4")
+    if os.path.exists(default_video):
+        video_source_path = default_video
+        st.sidebar.info("Usando vídeo padrão (nenhum upload detectado).")
+
+run_analysis = st.sidebar.button("⚙️ Processar Vídeo")
 
 if "last_state" not in st.session_state:
     st.session_state.last_state = "EM PE"
 
-if run_analysis:
-    if not os.path.exists(VIDEO_PATH) or not os.path.exists(MODEL_PATH):
-        st.error("Erro: Arquivos de vídeo ou modelo não encontrados.")
+# ==========================================
+# 4. Execução do Processamento
+# ==========================================
+
+if run_analysis and video_source_path:
+    if not os.path.exists(MODEL_PATH):
+        st.error("Erro: Modelo MediaPipe (.task) não encontrado na pasta.")
     else:
         # Configuração do Modelo
         base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
@@ -83,25 +104,28 @@ if run_analysis:
         )
         detector = vision.PoseLandmarker.create_from_options(options)
 
-        # Configuração de Vídeo
-        cap = cv2.VideoCapture(VIDEO_PATH)
+        # Configuração de Vídeo (Usando o path do upload ou padrão)
+        cap = cv2.VideoCapture(video_source_path)
         
-        # Propriedades do vídeo original
+        # Propriedades do vídeo
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         width_orig = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         
-        # Redimensionamento
+        if width_orig == 0:
+            st.error("Erro ao ler o vídeo. O arquivo pode estar corrompido.")
+            st.stop()
+
+        # Redimensionamento (Performance)
         target_width = 640
         scale = target_width / width_orig
         target_height = int(int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) * scale)
 
-        # --- MUDANÇA 2: CODEC alterado para 'vp80' (WebM) ---
-        # Isso corrige a tela preta no navegador
+        # Configuração do Gravador (WebM / VP80)
         fourcc = cv2.VideoWriter_fourcc(*'vp80') 
         out = cv2.VideoWriter(OUTPUT_PATH, fourcc, fps, (target_width, target_height))
 
-        # Barra de Progresso
+        # UI de Progresso
         progress_bar = st.progress(0)
         status_text = st.empty()
         
@@ -122,7 +146,7 @@ if run_analysis:
             result = detector.detect_for_video(mp_image, int(timestamp_ms))
             timestamp_ms += (1000.0 / fps)
 
-            # 3. Lógica de Negócio (Ângulos e Estados)
+            # 3. Lógica
             vertical_angle = 0
             current_state = st.session_state.last_state
 
@@ -141,16 +165,16 @@ if run_analysis:
 
                 st.session_state.last_state = current_state
 
-                # Desenho do Overlay
+                # Overlay
                 color = {"EM PE": (0, 255, 255), "DESCENDO": (255, 165, 0), "AGACHAMENTO OK": (0, 255, 0), "MUITO BAIXO": (0, 0, 255)}.get(current_state, (255, 255, 255))
                 cv2.rectangle(frame, (0, 0), (w, 60), (0, 0, 0), -1)
                 cv2.putText(frame, f"{current_state}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
                 cv2.putText(frame, f"{int(vertical_angle)} deg", (w - 150, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
 
-            # 4. Gravar Frame no arquivo final
+            # 4. Gravar Frame
             out.write(frame)
 
-            # Atualizar barra de progresso
+            # Barra de progresso
             frame_count += 1
             if total_frames > 0:
                 prog = min(frame_count / total_frames, 1.0)
@@ -162,16 +186,16 @@ if run_analysis:
         out.release()
         detector.close()
         
-        status_text.text("Processamento concluído! Carregando player...")
+        status_text.text("Concluído! Renderizando player...")
         progress_bar.empty()
 
-        # 5. Exibir o vídeo final
         if os.path.exists(OUTPUT_PATH):
-            st.success("Vídeo processado com sucesso!")
-            # O parâmetro format="video/webm" ajuda o navegador a entender
+            st.success("Análise Finalizada!")
             st.video(OUTPUT_PATH, format="video/webm")
         else:
-            st.error("Erro ao salvar o vídeo processado.")
+            st.error("Erro ao gerar o arquivo final.")
 
+elif run_analysis and not video_source_path:
+    st.warning("Por favor, faça o upload de um vídeo primeiro.")
 else:
-    st.info("Clique no botão na barra lateral para iniciar o processamento completo.")
+    st.info("Aguardando ação do usuário.")
