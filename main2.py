@@ -16,7 +16,7 @@ st.set_page_config(page_title="Processamento Offline - Agachamento", layout="wid
 st.title("🏋️ Análise Completa de Agachamento")
 st.markdown("Este modo processa o vídeo inteiro primeiro para garantir **reprodução fluida** no final.")
 
-# Funções de Threshold (Mantidas)
+# Funções de Threshold
 def get_thresholds_beginner():
     return {'NORMAL': (0, 32), 'TRANS': (35, 65), 'PASS': (70, 95), 'TOO_LOW': 95}
 
@@ -61,7 +61,9 @@ limits = get_thresholds_beginner() if mode == "Iniciante" else get_thresholds_pr
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 VIDEO_PATH = os.path.join(BASE_DIR, "gravando4.mp4")
 MODEL_PATH = os.path.join(BASE_DIR, "pose_landmarker_lite.task")
-OUTPUT_PATH = os.path.join(BASE_DIR, "output_final.mp4")
+
+# --- MUDANÇA 1: Alterado para .webm (formato nativo de web) ---
+OUTPUT_PATH = os.path.join(BASE_DIR, "output_final.webm")
 
 run_analysis = st.sidebar.button("⚙️ Processar Vídeo Completo")
 
@@ -89,14 +91,14 @@ if run_analysis:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         width_orig = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         
-        # Redimensionamento (Mantendo 640px de largura para processar rápido)
+        # Redimensionamento
         target_width = 640
         scale = target_width / width_orig
         target_height = int(int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) * scale)
 
-        # Configuração do Gravador (VideoWriter)
-        # mp4v é um codec genérico que costuma funcionar bem
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v') 
+        # --- MUDANÇA 2: CODEC alterado para 'vp80' (WebM) ---
+        # Isso corrige a tela preta no navegador
+        fourcc = cv2.VideoWriter_fourcc(*'vp80') 
         out = cv2.VideoWriter(OUTPUT_PATH, fourcc, fps, (target_width, target_height))
 
         # Barra de Progresso
@@ -164,10 +166,10 @@ if run_analysis:
         progress_bar.empty()
 
         # 5. Exibir o vídeo final
-        # Precisamos ler o arquivo binário para o Streamlit exibir corretamente
         if os.path.exists(OUTPUT_PATH):
             st.success("Vídeo processado com sucesso!")
-            st.video(OUTPUT_PATH)
+            # O parâmetro format="video/webm" ajuda o navegador a entender
+            st.video(OUTPUT_PATH, format="video/webm")
         else:
             st.error("Erro ao salvar o vídeo processado.")
 
