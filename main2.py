@@ -175,7 +175,7 @@ if run_analysis and video_source_path:
                 color = {"EM PE": (0, 255, 255), "DESCENDO": (255, 165, 0), "AGACHAMENTO OK": (0, 255, 0), "MUITO BAIXO": (0, 0, 255)}.get(current_state, (255, 255, 255))
                 cv2.rectangle(frame, (0, 0), (w, 60), (0, 0, 0), -1)
                 cv2.putText(frame, f"{current_state}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-                cv2.putText(frame, f"{int(vertical_angle)} deg", (w - 150, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                cv2.putText(frame, f"Joelho {int(vertical_angle)} Graus", (w - 150, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
 
             # 4. Gravar Frame
             out.write(frame)
@@ -205,6 +205,7 @@ elif run_analysis and not video_source_path:
     st.warning("Por favor, faça o upload de um vídeo primeiro.")
 else:
     st.info("Aguardando ação do usuário.")
+
 
 
 
