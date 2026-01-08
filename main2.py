@@ -12,9 +12,9 @@ import mediapipe as mp
 # 1. Configurações e Layout
 # ==========================================
 
-st.set_page_config(page_title="Upload & Análise AI", layout="wide")
-st.title("🏋️ Análise de Agachamento (Upload)")
-st.markdown("Faça o upload do seu vídeo MP4 para análise completa com IA.")
+st.set_page_config(page_title="Visão Computacional - 33 pontos")
+st.title("🏋️ Análise de Agachamento - Insira o seu Video")
+st.markdown("Faça o upload do seu vídeo MP4 e processe o video para obter análise completa.")
 
 # Funções de Threshold
 def get_thresholds_beginner():
@@ -199,3 +199,4 @@ elif run_analysis and not video_source_path:
     st.warning("Por favor, faça o upload de um vídeo primeiro.")
 else:
     st.info("Aguardando ação do usuário.")
+
