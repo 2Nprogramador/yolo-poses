@@ -13,7 +13,8 @@ import mediapipe as mp
 # ==========================================
 
 st.set_page_config(page_title="Visão Computacional - 33 pontos")
-st.title("Análise de Exercícios com Visão Computacional")
+st.title("""Análise de Exercícios
+com Visão Computacional""")
 st.markdown("""
 Faça o upload do seu vídeo MP4  
 Clique em Processar Vídeo  
@@ -203,6 +204,7 @@ elif run_analysis and not video_source_path:
     st.warning("Por favor, faça o upload de um vídeo primeiro.")
 else:
     st.info("Aguardando ação do usuário.")
+
 
 
 
