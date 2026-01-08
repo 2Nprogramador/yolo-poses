@@ -14,7 +14,11 @@ import mediapipe as mp
 
 st.set_page_config(page_title="Visão Computacional - 33 pontos")
 st.title("🏋️ Análise de Agachamento - Insira o seu Video")
-st.markdown("Faça o upload do seu vídeo MP4, e clique em processar video para obten a análise completa.")
+st.markdown("""
+Faça o upload do seu vídeo MP4  
+Clique em Processar Vídeo  
+Obtenha a Análise Completa
+""")
 
 # Funções de Threshold
 def get_thresholds_beginner():
@@ -199,6 +203,7 @@ elif run_analysis and not video_source_path:
     st.warning("Por favor, faça o upload de um vídeo primeiro.")
 else:
     st.info("Aguardando ação do usuário.")
+
 
 
 
