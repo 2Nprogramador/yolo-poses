@@ -49,11 +49,28 @@ def draw_visual_angle(frame, p1, p2, p3, angle_text, color=(255, 255, 255)):
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
 
 # ==========================================
-# 2. Configuração da Página e Sidebar Dinâmica
+# 2. Configuração da Página e Instruções
 # ==========================================
 
 st.set_page_config(page_title="Análise Personalizável", layout="wide")
 st.title("🏋️ Análise de Exercícios Personalizável")
+
+# --- SEÇÃO DE INSTRUÇÕES (Adicionado aqui) ---
+st.markdown("""
+<div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; margin-bottom: 25px;">
+    <h4 style="margin-top:0;">Como usar:</h4>
+    <ol>
+        <li>Escolha o exercício na barra lateral.</li>
+        <li>Personalize com as suas Regras.</li>
+        <li>Faça o upload do vídeo.</li>
+        <li>Clique em <b>Processar Vídeo</b> para ver a análise com métricas visuais.</li>
+    </ol>
+</div>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# 3. Sidebar Dinâmica
+# ==========================================
 
 st.sidebar.header("1. Seleção do Exercício")
 exercise_type = st.sidebar.selectbox(
@@ -61,16 +78,13 @@ exercise_type = st.sidebar.selectbox(
     ["Agachamento Búlgaro", "Agachamento Padrão"]
 )
 
-# --- Dicionário para armazenar as regras do usuário ---
+# Dicionário para armazenar as regras do usuário
 user_rules = {}
 
 st.sidebar.markdown("---")
 st.sidebar.header(f"2. Regras: {exercise_type}")
 
-# =========================================================
-# LÓGICA DE PERSONALIZAÇÃO (A Mágica acontece aqui)
-# =========================================================
-
+# --- LÓGICA DE PERSONALIZAÇÃO ---
 if exercise_type == "Agachamento Búlgaro":
     st.sidebar.info("Configure os ângulos para o Búlgaro.")
     
@@ -105,9 +119,9 @@ elif exercise_type == "Agachamento Padrão":
         'pass_min': val_ok
     }
 
-# =========================================================
-# 3. Upload e Setup
-# =========================================================
+# ==========================================
+# 4. Upload e Setup
+# ==========================================
 
 st.sidebar.markdown("---")
 uploaded_file = st.sidebar.file_uploader("3. Carregar Vídeo", type=["mp4", "mov", "avi"])
@@ -127,14 +141,14 @@ else:
     if os.path.exists(default):
         video_path = default
 
-run_btn = st.sidebar.button("⚙️ PROCESSAR COM MINHAS REGRAS")
+run_btn = st.sidebar.button("⚙️ PROCESSAR VÍDEO")
 
 if "last_state" not in st.session_state:
     st.session_state.last_state = "INICIO"
 
-# =========================================================
-# 4. Loop de Processamento
-# =========================================================
+# ==========================================
+# 5. Loop de Processamento
+# ==========================================
 
 if run_btn and video_path:
     if not os.path.exists(MODEL_PATH):
@@ -185,34 +199,29 @@ if run_btn and video_path:
                 lm = result.pose_landmarks[0]
                 draw_pose_landmarks(frame, lm, w, h)
 
-                # =========================================================
-                # APLICAÇÃO DAS REGRAS PERSONALIZADAS
-                # =========================================================
+                # --- APLICAÇÃO DAS REGRAS PERSONALIZADAS ---
                 
-                # --- CASO 1: BULGARIAN SPLIT SQUAT ---
+                # CASO 1: BULGARIAN SPLIT SQUAT
                 if exercise_type == "Agachamento Búlgaro":
-                    # Detectar perna da frente (a que está mais baixa no eixo Y visual)
+                    # Detectar perna da frente
                     left_y, right_y = lm[27].y, lm[28].y
                     if left_y > right_y: # Esq na frente
                         s, h_pt, k, a = 11, 23, 25, 27
                     else:
                         s, h_pt, k, a = 12, 24, 26, 28
 
-                    # Pontos
                     shoulder = [lm[s].x * w, lm[s].y * h]
                     hip = [lm[h_pt].x * w, lm[h_pt].y * h]
                     knee = [lm[k].x * w, lm[k].y * h]
                     ankle = [lm[a].x * w, lm[a].y * h]
 
-                    # 1. Checa Joelho (Se o usuário ativou)
                     if user_rules['knee']['active']:
                         knee_angle = calculate_angle(hip, knee, ankle)
                         main_angle_display = knee_angle
                         vis_p1, vis_p2, vis_p3 = hip, knee, ankle
 
-                        # Usa os valores que o usuário digitou no Sidebar
-                        limit_max_stand = user_rules['knee']['max'] # ex: 160
-                        limit_min_squat = user_rules['knee']['min'] # ex: 75
+                        limit_max_stand = user_rules['knee']['max'] 
+                        limit_min_squat = user_rules['knee']['min'] 
 
                         if knee_angle > limit_max_stand:
                             current_state = "EM PE"
@@ -221,18 +230,15 @@ if run_btn and video_path:
                         elif knee_angle < limit_min_squat:
                             current_state = "AGACHAMENTO OK"
                     
-                    # 2. Checa Tronco (Se o usuário ativou)
                     if user_rules['torso']['active']:
                         torso_angle = calculate_angle(shoulder, hip, knee)
                         limit_torso = user_rules['torso']['limit']
-                        
                         if torso_angle < limit_torso:
                             alert_msg = f"TRONCO < {limit_torso}"
-                            # Desenha linha vermelha no tronco se falhar
                             cv2.line(frame, (int(shoulder[0]), int(shoulder[1])), 
                                      (int(hip[0]), int(hip[1])), (0, 0, 255), 4)
 
-                # --- CASO 2: AGACHAMENTO PADRÃO ---
+                # CASO 2: AGACHAMENTO PADRÃO
                 elif exercise_type == "Agachamento Padrão":
                     hip = [lm[23].x * w, lm[23].y * h]
                     knee = [lm[25].x * w, lm[25].y * h]
@@ -242,7 +248,6 @@ if run_btn and video_path:
                     main_angle_display = femur_angle
                     vis_p1, vis_p2, vis_p3 = hip, knee, vertical_ref
 
-                    # Recupera valores do user_rules
                     lim_stand = user_rules['squat_limits']['stand_max']
                     lim_pass = user_rules['squat_limits']['pass_min']
 
@@ -255,23 +260,15 @@ if run_btn and video_path:
 
                 st.session_state.last_state = current_state
 
-                # =========================================================
-                # DESENHO FINAL (OVERLAY)
-                # =========================================================
-                
-                # Cores
+                # --- DESENHO FINAL ---
                 color_map = {"EM PE": (0, 255, 255), "DESCENDO": (255, 165, 0), "AGACHAMENTO OK": (0, 255, 0)}
                 s_color = color_map.get(current_state, (255, 255, 255))
                 
-                # Desenha o ângulo principal se houver regra ativa
                 if vis_p1:
                     draw_visual_angle(frame, vis_p1, vis_p2, vis_p3, f"{int(main_angle_display)}", s_color)
 
-                # Caixa de Infos
                 cv2.rectangle(frame, (0, 0), (w, 80 if alert_msg else 50), (0, 0, 0), -1)
                 cv2.putText(frame, f"Estado: {current_state}", (10, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, s_color, 2)
-                
-                # Mostra o ângulo atual vs a regra do usuário
                 cv2.putText(frame, f"Ang: {int(main_angle_display)}", (w - 150, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
 
                 if alert_msg:
