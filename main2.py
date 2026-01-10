@@ -52,15 +52,14 @@ def draw_visual_angle(frame, p1, p2, p3, angle_text, color=(255, 255, 255)):
 # 2. Configuração da Página e Instruções
 # ==========================================
 
-st.set_page_config(page_title="Análise Personalizável", layout="wide")
-st.title("🏋️ Análise de Exercícios Personalizável")
+
 
 # --- SEÇÃO DE INSTRUÇÕES (Adicionado aqui) ---
 # ==========================================
 # 2. Configuração da Página e Instruções
 # ==========================================
 
-st.set_page_config(page_title="Análise Personalizável", layout="wide")
+st.set_page_config(page_title="Análise Personalizável")
 st.title("🏋️ Análise de Exercícios Personalizável")
 
 # --- CORREÇÃO: Forçamos a cor do texto (color: #333333) para aparecer no fundo claro ---
@@ -295,4 +294,5 @@ if run_btn and video_path:
         if os.path.exists(OUTPUT_PATH):
             st.success("Processamento Finalizado com Suas Regras!")
             st.video(OUTPUT_PATH, format="video/webm")
+
 
