@@ -52,17 +52,10 @@ def draw_visual_angle(frame, p1, p2, p3, angle_text, color=(255, 255, 255)):
 # 2. Configuração da Página e Instruções
 # ==========================================
 
-
-
-# --- SEÇÃO DE INSTRUÇÕES (Adicionado aqui) ---
-# ==========================================
-# 2. Configuração da Página e Instruções
-# ==========================================
-
-st.set_page_config(page_title="Análise Personalizável")
+st.set_page_config(page_title="Análise Personalizável", layout="wide")
 st.title("🏋️ Análise de Exercícios Personalizável")
 
-# --- CORREÇÃO: Forçamos a cor do texto (color: #333333) para aparecer no fundo claro ---
+# Seção de Instruções (compatível com Dark Mode)
 st.markdown("""
 <div style="background-color: #f0f2f6; color: #333333; padding: 15px; border-radius: 10px; margin-bottom: 25px;">
     <h4 style="margin-top:0; color: #333333;">Como usar:</h4>
@@ -80,9 +73,10 @@ st.markdown("""
 # ==========================================
 
 st.sidebar.header("1. Seleção do Exercício")
+# --- ATUALIZAÇÃO: Adicionado 'Supino Máquina' na lista ---
 exercise_type = st.sidebar.selectbox(
     "Qual exercício analisar?", 
-    ["Agachamento Búlgaro", "Agachamento Padrão"]
+    ["Agachamento Búlgaro", "Agachamento Padrão", "Supino Máquina"]
 )
 
 # Dicionário para armazenar as regras do usuário
@@ -92,6 +86,7 @@ st.sidebar.markdown("---")
 st.sidebar.header(f"2. Regras: {exercise_type}")
 
 # --- LÓGICA DE PERSONALIZAÇÃO ---
+
 if exercise_type == "Agachamento Búlgaro":
     st.sidebar.info("Configure os ângulos para o Búlgaro.")
     
@@ -126,6 +121,23 @@ elif exercise_type == "Agachamento Padrão":
         'pass_min': val_ok
     }
 
+# --- ATUALIZAÇÃO: Regras do Supino Máquina ---
+elif exercise_type == "Supino Máquina":
+    st.sidebar.info("Análise de braço (Ombro-Cotovelo-Punho).")
+    
+    st.sidebar.markdown("**Regras de Amplitude:**")
+    
+    # Regra 1: Extensão total (Fim do movimento)
+    val_extended = st.sidebar.slider("Ângulo Braço Esticado (Min)", 140, 180, 160, help="Ângulo considerado como extensão total do braço.")
+    
+    # Regra 2: Flexão/Retorno (Início do movimento)
+    val_flexed = st.sidebar.slider("Ângulo Braço na Base (Max)", 40, 100, 80, help="Ângulo quando o peso está próximo ao peito.")
+    
+    user_rules['bench_press'] = {
+        'extended_min': val_extended,
+        'flexed_max': val_flexed
+    }
+
 # ==========================================
 # 4. Upload e Setup
 # ==========================================
@@ -143,7 +155,6 @@ if uploaded_file:
     tfile.write(uploaded_file.read())
     video_path = tfile.name
 else:
-    # Fallback para teste rápido se tiver o arquivo local
     default = os.path.join(BASE_DIR, "gravando4.mp4")
     if os.path.exists(default):
         video_path = default
@@ -265,10 +276,42 @@ if run_btn and video_path:
                     elif femur_angle >= lim_pass:
                         current_state = "AGACHAMENTO OK"
 
+                # --- ATUALIZAÇÃO: Lógica do Supino Máquina ---
+                elif exercise_type == "Supino Máquina":
+                    # Usamos o lado esquerdo (padrão) - Pontos 11, 13, 15
+                    # Se fosse necessário, poderíamos detectar qual braço está visível
+                    shoulder = [lm[11].x * w, lm[11].y * h]
+                    elbow = [lm[13].x * w, lm[13].y * h]
+                    wrist = [lm[15].x * w, lm[15].y * h]
+
+                    elbow_angle = calculate_angle(shoulder, elbow, wrist)
+                    main_angle_display = elbow_angle
+                    vis_p1, vis_p2, vis_p3 = shoulder, elbow, wrist
+
+                    # Recupera as regras do usuário
+                    limit_ext = user_rules['bench_press']['extended_min'] # ex: 160
+                    limit_flex = user_rules['bench_press']['flexed_max']  # ex: 80
+
+                    # Lógica de Estados
+                    if elbow_angle >= limit_ext:
+                        current_state = "BRACO ESTICADO"
+                    elif elbow_angle <= limit_flex:
+                        current_state = "NA BASE"
+                    else:
+                        current_state = "EMPURRANDO"
+
                 st.session_state.last_state = current_state
 
                 # --- DESENHO FINAL ---
-                color_map = {"EM PE": (0, 255, 255), "DESCENDO": (255, 165, 0), "AGACHAMENTO OK": (0, 255, 0)}
+                # Adicionei cores específicas para os estados do supino também
+                color_map = {
+                    "EM PE": (0, 255, 255), 
+                    "DESCENDO": (255, 165, 0), 
+                    "AGACHAMENTO OK": (0, 255, 0),
+                    "BRACO ESTICADO": (0, 255, 0), # Verde
+                    "NA BASE": (0, 255, 255),      # Amarelo
+                    "EMPURRANDO": (255, 165, 0)    # Laranja
+                }
                 s_color = color_map.get(current_state, (255, 255, 255))
                 
                 if vis_p1:
@@ -294,5 +337,3 @@ if run_btn and video_path:
         if os.path.exists(OUTPUT_PATH):
             st.success("Processamento Finalizado com Suas Regras!")
             st.video(OUTPUT_PATH, format="video/webm")
-
-
