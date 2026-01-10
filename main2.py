@@ -55,7 +55,6 @@ def draw_visual_angle(frame, p1, p2, p3, angle_text, color=(255, 255, 255)):
 st.set_page_config(page_title="Análise Personalizável", layout="wide")
 st.title("🏋️ Análise de Exercícios Personalizável")
 
-# Seção de Instruções (compatível com Dark Mode)
 st.markdown("""
 <div style="background-color: #f0f2f6; color: #333333; padding: 15px; border-radius: 10px; margin-bottom: 25px;">
     <h4 style="margin-top:0; color: #333333;">Como usar:</h4>
@@ -73,13 +72,11 @@ st.markdown("""
 # ==========================================
 
 st.sidebar.header("1. Seleção do Exercício")
-# --- ATUALIZAÇÃO: Adicionado 'Supino Máquina' na lista ---
 exercise_type = st.sidebar.selectbox(
     "Qual exercício analisar?", 
     ["Agachamento Búlgaro", "Agachamento Padrão", "Supino Máquina"]
 )
 
-# Dicionário para armazenar as regras do usuário
 user_rules = {}
 
 st.sidebar.markdown("---")
@@ -90,7 +87,6 @@ st.sidebar.header(f"2. Regras: {exercise_type}")
 if exercise_type == "Agachamento Búlgaro":
     st.sidebar.info("Configure os ângulos para o Búlgaro.")
     
-    # Regra 1: Profundidade do Joelho
     check_knee = st.sidebar.checkbox("Analisar Profundidade (Joelho)", value=True)
     if check_knee:
         col1, col2 = st.sidebar.columns(2)
@@ -100,7 +96,6 @@ if exercise_type == "Agachamento Búlgaro":
     else:
         user_rules['knee'] = {'active': False}
 
-    # Regra 2: Inclinação do Tronco
     check_torso = st.sidebar.checkbox("Alerta de Tronco (Postura)", value=True)
     if check_torso:
         min_torso = st.sidebar.slider("Ângulo Mínimo Tronco (Segurança)", 50, 90, 70)
@@ -111,7 +106,6 @@ if exercise_type == "Agachamento Búlgaro":
 elif exercise_type == "Agachamento Padrão":
     st.sidebar.info("Configure os ângulos para o Agachamento.")
     
-    # Regra Única: Profundidade
     st.sidebar.markdown("**Limites de Estado:**")
     val_stand = st.sidebar.slider("Limite 'Em Pé' (graus)", 0, 40, 32)
     val_ok = st.sidebar.slider("Limite 'Agachamento OK' (graus)", 70, 110, 80)
@@ -121,21 +115,27 @@ elif exercise_type == "Agachamento Padrão":
         'pass_min': val_ok
     }
 
-# --- ATUALIZAÇÃO: Regras do Supino Máquina ---
+# --- SUPINO MÁQUINA ---
 elif exercise_type == "Supino Máquina":
-    st.sidebar.info("Análise de braço (Ombro-Cotovelo-Punho).")
+    st.sidebar.info("Análise de braço e segurança do ombro.")
     
-    st.sidebar.markdown("**Regras de Amplitude:**")
+    st.sidebar.markdown("**1. Amplitude de Movimento:**")
+    val_extended = st.sidebar.slider("Braço Esticado (Min)", 140, 180, 160)
+    val_flexed = st.sidebar.slider("Braço na Base (Max)", 40, 100, 80)
     
-    # Regra 1: Extensão total (Fim do movimento)
-    val_extended = st.sidebar.slider("Ângulo Braço Esticado (Min)", 140, 180, 160, help="Ângulo considerado como extensão total do braço.")
+    st.sidebar.markdown("**2. Segurança (Lesões):**")
+    # --- NOVA REGRA DE SEGURANÇA ---
+    check_safety = st.sidebar.checkbox("Alerta: Cotovelos Abertos", value=True, help="Alerta se o usuário abrir demais os cotovelos (risco para o ombro).")
     
-    # Regra 2: Flexão/Retorno (Início do movimento)
-    val_flexed = st.sidebar.slider("Ângulo Braço na Base (Max)", 40, 100, 80, help="Ângulo quando o peso está próximo ao peito.")
-    
+    safety_limit = 80 # Valor padrão
+    if check_safety:
+        safety_limit = st.sidebar.slider("Limite Abertura Cotovelo", 60, 90, 80, help="Acima deste ângulo, o sistema alerta perigo.")
+
     user_rules['bench_press'] = {
         'extended_min': val_extended,
-        'flexed_max': val_flexed
+        'flexed_max': val_flexed,
+        'safety_check': check_safety,
+        'safety_limit': safety_limit
     }
 
 # ==========================================
@@ -217,9 +217,9 @@ if run_btn and video_path:
                 lm = result.pose_landmarks[0]
                 draw_pose_landmarks(frame, lm, w, h)
 
-                # --- APLICAÇÃO DAS REGRAS PERSONALIZADAS ---
+                # --- APLICAÇÃO DAS REGRAS ---
                 
-                # CASO 1: BULGARIAN SPLIT SQUAT
+                # 1. AGACHAMENTO BÚLGARO
                 if exercise_type == "Agachamento Búlgaro":
                     # Detectar perna da frente
                     left_y, right_y = lm[27].y, lm[28].y
@@ -256,7 +256,7 @@ if run_btn and video_path:
                             cv2.line(frame, (int(shoulder[0]), int(shoulder[1])), 
                                      (int(hip[0]), int(hip[1])), (0, 0, 255), 4)
 
-                # CASO 2: AGACHAMENTO PADRÃO
+                # 2. AGACHAMENTO PADRÃO
                 elif exercise_type == "Agachamento Padrão":
                     hip = [lm[23].x * w, lm[23].y * h]
                     knee = [lm[25].x * w, lm[25].y * h]
@@ -276,23 +276,25 @@ if run_btn and video_path:
                     elif femur_angle >= lim_pass:
                         current_state = "AGACHAMENTO OK"
 
-                # --- ATUALIZAÇÃO: Lógica do Supino Máquina ---
+                # 3. SUPINO MÁQUINA
                 elif exercise_type == "Supino Máquina":
-                    # Usamos o lado esquerdo (padrão) - Pontos 11, 13, 15
-                    # Se fosse necessário, poderíamos detectar qual braço está visível
-                    shoulder = [lm[11].x * w, lm[11].y * h]
-                    elbow = [lm[13].x * w, lm[13].y * h]
-                    wrist = [lm[15].x * w, lm[15].y * h]
+                    # Pontos do lado esquerdo
+                    shoulder_idx, elbow_idx, wrist_idx, hip_idx = 11, 13, 15, 23
+                    
+                    shoulder = [lm[shoulder_idx].x * w, lm[shoulder_idx].y * h]
+                    elbow = [lm[elbow_idx].x * w, lm[elbow_idx].y * h]
+                    wrist = [lm[wrist_idx].x * w, lm[wrist_idx].y * h]
+                    hip = [lm[hip_idx].x * w, lm[hip_idx].y * h]
 
+                    # Ângulo principal (movimento)
                     elbow_angle = calculate_angle(shoulder, elbow, wrist)
                     main_angle_display = elbow_angle
                     vis_p1, vis_p2, vis_p3 = shoulder, elbow, wrist
 
-                    # Recupera as regras do usuário
-                    limit_ext = user_rules['bench_press']['extended_min'] # ex: 160
-                    limit_flex = user_rules['bench_press']['flexed_max']  # ex: 80
+                    # Regras de Movimento
+                    limit_ext = user_rules['bench_press']['extended_min'] 
+                    limit_flex = user_rules['bench_press']['flexed_max']  
 
-                    # Lógica de Estados
                     if elbow_angle >= limit_ext:
                         current_state = "BRACO ESTICADO"
                     elif elbow_angle <= limit_flex:
@@ -300,24 +302,38 @@ if run_btn and video_path:
                     else:
                         current_state = "EMPURRANDO"
 
+                    # --- NOVA REGRA DE SEGURANÇA (ABDUÇÃO DO OMBRO) ---
+                    if user_rules['bench_press']['safety_check']:
+                        # Calcula ângulo entre Quadril -> Ombro -> Cotovelo
+                        abduction_angle = calculate_angle(hip, shoulder, elbow)
+                        max_abduction = user_rules['bench_press']['safety_limit']
+                        
+                        if abduction_angle > max_abduction:
+                            alert_msg = "COTOVELOS MUITO ABERTOS!"
+                            # Desenha linha vermelha indicando o erro
+                            cv2.line(frame, (int(hip[0]), int(hip[1])), (int(shoulder[0]), int(shoulder[1])), (0, 0, 255), 3)
+                            cv2.line(frame, (int(shoulder[0]), int(shoulder[1])), (int(elbow[0]), int(elbow[1])), (0, 0, 255), 3)
+
                 st.session_state.last_state = current_state
 
                 # --- DESENHO FINAL ---
-                # Adicionei cores específicas para os estados do supino também
                 color_map = {
                     "EM PE": (0, 255, 255), 
                     "DESCENDO": (255, 165, 0), 
                     "AGACHAMENTO OK": (0, 255, 0),
-                    "BRACO ESTICADO": (0, 255, 0), # Verde
-                    "NA BASE": (0, 255, 255),      # Amarelo
-                    "EMPURRANDO": (255, 165, 0)    # Laranja
+                    "BRACO ESTICADO": (0, 255, 0),
+                    "NA BASE": (0, 255, 255),
+                    "EMPURRANDO": (255, 165, 0)
                 }
                 s_color = color_map.get(current_state, (255, 255, 255))
                 
                 if vis_p1:
                     draw_visual_angle(frame, vis_p1, vis_p2, vis_p3, f"{int(main_angle_display)}", s_color)
 
-                cv2.rectangle(frame, (0, 0), (w, 80 if alert_msg else 50), (0, 0, 0), -1)
+                # Caixa de Infos (Aumenta altura se tiver alerta)
+                box_h = 80 if alert_msg else 50
+                cv2.rectangle(frame, (0, 0), (w, box_h), (0, 0, 0), -1)
+                
                 cv2.putText(frame, f"Estado: {current_state}", (10, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, s_color, 2)
                 cv2.putText(frame, f"Ang: {int(main_angle_display)}", (w - 150, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
 
