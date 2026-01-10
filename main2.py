@@ -56,14 +56,22 @@ st.set_page_config(page_title="Análise Personalizável", layout="wide")
 st.title("🏋️ Análise de Exercícios Personalizável")
 
 # --- SEÇÃO DE INSTRUÇÕES (Adicionado aqui) ---
+# ==========================================
+# 2. Configuração da Página e Instruções
+# ==========================================
+
+st.set_page_config(page_title="Análise Personalizável", layout="wide")
+st.title("🏋️ Análise de Exercícios Personalizável")
+
+# --- CORREÇÃO: Forçamos a cor do texto (color: #333333) para aparecer no fundo claro ---
 st.markdown("""
-<div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; margin-bottom: 25px;">
-    <h4 style="margin-top:0;">Como usar:</h4>
+<div style="background-color: #f0f2f6; color: #333333; padding: 15px; border-radius: 10px; margin-bottom: 25px;">
+    <h4 style="margin-top:0; color: #333333;">Como usar:</h4>
     <ol>
-        <li>Escolha o exercício na barra lateral.</li>
-        <li>Personalize com as suas Regras.</li>
-        <li>Faça o upload do vídeo.</li>
-        <li>Clique em <b>Processar Vídeo</b> para ver a análise com métricas visuais.</li>
+        <li style="color: #333333;">Escolha o exercício na barra lateral.</li>
+        <li style="color: #333333;">Personalize com as suas Regras.</li>
+        <li style="color: #333333;">Faça o upload do vídeo.</li>
+        <li style="color: #333333;">Clique em <b>Processar Vídeo</b> para ver a análise com métricas visuais.</li>
     </ol>
 </div>
 """, unsafe_allow_html=True)
@@ -287,3 +295,4 @@ if run_btn and video_path:
         if os.path.exists(OUTPUT_PATH):
             st.success("Processamento Finalizado com Suas Regras!")
             st.video(OUTPUT_PATH, format="video/webm")
+
