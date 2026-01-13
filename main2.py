@@ -51,7 +51,7 @@ def draw_visual_angle(frame, p1, p2, p3, angle_text, color=(255, 255, 255), labe
 # ==========================================
 
 st.set_page_config(page_title="Treino Completo AI", layout="wide")
-st.title("🏋️ Análise de Exercícios (Originais + Novos)")
+st.title("🏋️ Análise de Exercícios com Visão Computacional")
 
 # ==========================================
 # 3. Sidebar: Seleção e Regras
@@ -461,3 +461,4 @@ if run_btn and video_path:
         
         status.success("Análise Concluída!")
         st.video(OUTPUT_PATH, format="video/webm")
+
