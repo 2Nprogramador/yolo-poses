@@ -81,7 +81,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏋️ Análise de Exercícios (Originais + Novos)")
+st.title("Análise de Exercícios com Visão Computacional")
 
 # ==========================================
 # 3. Sidebar: Seleção e Regras
@@ -491,6 +491,7 @@ if run_btn and video_path:
         
         status.success("Análise Concluída!")
         st.video(OUTPUT_PATH, format="video/webm")
+
 
 
 
