@@ -50,8 +50,38 @@ def draw_visual_angle(frame, p1, p2, p3, angle_text, color=(255, 255, 255), labe
 # 2. Configuração da Página
 # ==========================================
 
-st.set_page_config(page_title="Treino Completo AI", layout="wide")
-st.title("Análise de Exercícios com Visão Computacional")
+st.set_page_config(
+    page_title="Treino Completo AI", 
+    layout="wide", 
+    initial_sidebar_state="expanded"
+)
+
+# 2. CSS para chamar atenção ao botão da sidebar (Animação de Pulso)
+st.markdown("""
+    <style>
+        /* Cria uma animação de "pulso" vermelho */
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(255, 75, 75, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 75, 75, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 75, 75, 0); }
+        }
+
+        /* Aplica a animação ao botão que abre a sidebar (quando ela está fechada) */
+        [data-testid="stSidebarCollapsedControl"] {
+            animation: pulse-red 2s infinite;
+            background-color: #FF4B4B; /* Deixa o fundo vermelho para destaque */
+            color: white; /* Seta branca */
+            border-radius: 50%;
+        }
+        
+        /* Opcional: Destaca também o botão de fechar dentro da sidebar */
+        [data-testid="stSidebarNav"] > button {
+             border: 2px solid #FF4B4B;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+st.title("🏋️ Análise de Exercícios (Originais + Novos)")
 
 # ==========================================
 # 3. Sidebar: Seleção e Regras
@@ -461,5 +491,6 @@ if run_btn and video_path:
         
         status.success("Análise Concluída!")
         st.video(OUTPUT_PATH, format="video/webm")
+
 
 
