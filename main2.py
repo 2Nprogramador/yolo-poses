@@ -11,9 +11,6 @@ import mediapipe as mp
 # ==========================================
 # 1. CONSTANTES DE MOVIMENTO (A FÍSICA DO EXERCÍCIO)
 # ==========================================
-# Estas regras definem O QUE É o movimento.
-# Elas ficam separadas das preferências do usuário.
-
 MOVEMENT_CONSTANTS = {
     "Agachamento Búlgaro": {
         "state_variable": "knee_angle",
@@ -125,13 +122,20 @@ st.markdown("""
         [data-testid="stSidebarNav"] > button {
              border: 2px solid #FF4B4B;
         }
+        /* Estilo para separar visualmente as seções da sidebar */
+        .sidebar-section {
+            background-color: #f0f2f6;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("Análise de Exercícios com Visão Computacional")
 
 # ==========================================
-# 4. Sidebar: Seleção e Regras do Usuário
+# 4. Sidebar: Seleção e Configuração Organizada
 # ==========================================
 
 st.sidebar.header("1. Seleção do Exercício")
@@ -139,67 +143,143 @@ st.sidebar.header("1. Seleção do Exercício")
 EXERCISE_OPTIONS = list(MOVEMENT_CONSTANTS.keys())
 exercise_type = st.sidebar.selectbox("Qual exercício analisar?", EXERCISE_OPTIONS)
 
-# Dicionário que armazena APENAS as regras configuráveis pelo usuário
 user_thresholds = {}
 
 st.sidebar.markdown("---")
-st.sidebar.header(f"2. Calibragem: {exercise_type}")
 
-# --- CONFIGURAÇÃO DOS THRESHOLDS PELO USUÁRIO ---
+# =========================================================
+# LÓGICA DE INTERFACE DIVIDIDA (ESTADO vs SEGURANÇA)
+# =========================================================
 
+def render_movement_header():
+    st.sidebar.markdown("### 📏 1. Regras de Movimento (Estado)")
+    st.sidebar.caption("Parâmetros físicos que definem o exercício.")
+
+def render_safety_header():
+    st.sidebar.markdown("### 🛡️ 2. Regras do Usuário (Segurança)")
+    st.sidebar.caption("Alertas de correção e preferências.")
+
+# --- AGACHAMENTO BÚLGARO ---
 if exercise_type == "Agachamento Búlgaro":
-    st.sidebar.caption("Define quando conta como 'Agachou' ou 'Levantou'")
-    user_thresholds['knee_min'] = st.sidebar.number_input("Ângulo Mín (Baixo)", 75)
-    user_thresholds['knee_max'] = st.sidebar.number_input("Ângulo Máx (Alto)", 160)
+    render_movement_header()
+    user_thresholds['knee_min'] = st.sidebar.number_input("Ângulo Mín (Baixo)", 75, help="Ângulo do joelho para considerar agachado.")
+    user_thresholds['knee_max'] = st.sidebar.number_input("Ângulo Máx (Alto)", 160, help="Ângulo do joelho para considerar em pé.")
     
-    st.sidebar.caption("Segurança")
-    check_torso = st.sidebar.checkbox("Alerta de Tronco", value=True)
-    user_thresholds['torso_limit'] = st.sidebar.slider("Limite Tronco", 50, 90, 70) if check_torso else None
+    st.sidebar.markdown("---")
+    render_safety_header()
+    check_torso = st.sidebar.checkbox("Alerta: Tronco Inclinado", value=True)
+    if check_torso:
+        user_thresholds['torso_limit'] = st.sidebar.slider("Limite Inclinação Tronco", 50, 90, 70)
+    else:
+        user_thresholds['torso_limit'] = None
 
+# --- AGACHAMENTO PADRÃO ---
 elif exercise_type == "Agachamento Padrão":
-    st.sidebar.caption("Define os pontos de virada do movimento")
-    user_thresholds['stand_max'] = st.sidebar.slider("Limite 'Em Pé'", 0, 40, 32)
+    render_movement_header()
+    user_thresholds['stand_max'] = st.sidebar.slider("Limite 'Em Pé' (Coxa)", 0, 40, 32)
     user_thresholds['pass_min'] = st.sidebar.slider("Limite 'Agachamento OK'", 70, 110, 80)
+    
+    st.sidebar.markdown("---")
+    render_safety_header()
+    st.sidebar.info("Nenhuma regra de segurança extra configurada para este exercício ainda.")
 
+# --- SUPINO MÁQUINA ---
 elif exercise_type == "Supino Máquina":
+    render_movement_header()
     user_thresholds['extended_min'] = st.sidebar.slider("Braço Esticado (Min)", 140, 180, 160)
     user_thresholds['flexed_max'] = st.sidebar.slider("Braço na Base (Max)", 40, 100, 80)
     
+    st.sidebar.markdown("---")
+    render_safety_header()
     check_safety = st.sidebar.checkbox("Alerta: Cotovelos Abertos", value=True)
-    user_thresholds['safety_limit'] = st.sidebar.slider("Limite Abertura Cotovelo", 60, 90, 80) if check_safety else None
+    if check_safety:
+        user_thresholds['safety_limit'] = st.sidebar.slider("Limite Abertura Cotovelo", 60, 90, 80)
+    else:
+        user_thresholds['safety_limit'] = None
 
+# --- FLEXÃO DE BRAÇO ---
 elif exercise_type == "Flexão de Braço":
+    render_movement_header()
     user_thresholds['pu_down'] = st.sidebar.slider("Ângulo Baixo (Descida)", 60, 100, 90)
     user_thresholds['pu_up'] = st.sidebar.slider("Ângulo Alto (Subida)", 150, 180, 165)
+    
+    st.sidebar.markdown("---")
+    render_safety_header()
+    st.sidebar.info("Nenhuma regra de segurança extra configurada.")
 
+# --- ROSCA DIRETA ---
 elif exercise_type == "Rosca Direta":
+    render_movement_header()
     user_thresholds['bc_flex'] = st.sidebar.slider("Contração Máxima", 30, 60, 45)
     user_thresholds['bc_ext'] = st.sidebar.slider("Extensão Completa", 140, 180, 160)
+    
+    st.sidebar.markdown("---")
+    render_safety_header()
+    st.sidebar.info("Nenhuma regra de segurança extra configurada.")
 
+# --- DESENVOLVIMENTO (OMBRO) ---
 elif exercise_type == "Desenvolvimento (Ombro)":
-    user_thresholds['sp_up'] = st.sidebar.slider("Braço Esticado", 150, 180, 165)
+    render_movement_header()
+    user_thresholds['sp_up'] = st.sidebar.slider("Braço Esticado (Lockout)", 150, 180, 165)
     user_thresholds['sp_down'] = st.sidebar.slider("Cotovelo na Base", 60, 100, 80)
+    
+    st.sidebar.markdown("---")
+    render_safety_header()
+    st.sidebar.info("Nenhuma regra de segurança extra configurada.")
 
+# --- AFUNDO (LUNGE) ---
 elif exercise_type == "Afundo (Lunge)":
+    render_movement_header()
     user_thresholds['lg_knee'] = st.sidebar.slider("Profundidade Joelho", 70, 110, 90)
-    check_torso = st.sidebar.checkbox("Alerta Tronco", value=True)
-    user_thresholds['lg_torso'] = st.sidebar.slider("Inclinação Tronco", 70, 90, 80) if check_torso else None
+    
+    st.sidebar.markdown("---")
+    render_safety_header()
+    check_torso = st.sidebar.checkbox("Alerta: Postura Tronco", value=True)
+    if check_torso:
+        user_thresholds['lg_torso'] = st.sidebar.slider("Inclinação Tronco Mínima", 70, 90, 80)
+    else:
+        user_thresholds['lg_torso'] = None
 
+# --- LEVANTAMENTO TERRA ---
 elif exercise_type == "Levantamento Terra":
-    user_thresholds['dl_hip'] = st.sidebar.slider("Extensão Final", 160, 180, 170)
+    render_movement_header()
+    user_thresholds['dl_hip'] = st.sidebar.slider("Extensão Final (Quadril)", 160, 180, 170)
     user_thresholds['dl_back'] = st.sidebar.slider("Limite Flexão (Costas)", 40, 90, 60)
+    
+    st.sidebar.markdown("---")
+    render_safety_header()
+    st.sidebar.caption("Nota: A regra de 'Costas' aqui atua como Estado e Segurança simultaneamente.")
 
+# --- PRANCHA (PLANK) ---
 elif exercise_type == "Prancha (Plank)":
+    render_movement_header()
+    st.sidebar.info("Regras de Alinhamento Corporal")
     user_thresholds['pk_min'] = st.sidebar.slider("Mínimo (Cair Quadril)", 150, 175, 165)
     user_thresholds['pk_max'] = st.sidebar.slider("Máximo (Empinar)", 175, 190, 185)
+    
+    st.sidebar.markdown("---")
+    render_safety_header()
+    st.sidebar.info("Os limites de movimento da prancha já atuam como regras de segurança.")
 
+# --- ABDOMINAL (CRUNCH) ---
 elif exercise_type == "Abdominal (Crunch)":
+    render_movement_header()
     user_thresholds['cr_flex'] = st.sidebar.slider("Contração Máxima", 40, 100, 70)
     user_thresholds['cr_ext'] = st.sidebar.slider("Retorno (Deitado)", 110, 150, 130)
+    
+    st.sidebar.markdown("---")
+    render_safety_header()
+    st.sidebar.info("Nenhuma regra de segurança extra configurada.")
 
+# --- ELEVAÇÃO LATERAL ---
 elif exercise_type == "Elevação Lateral":
-    user_thresholds['lr_height'] = st.sidebar.slider("Ângulo Topo", 70, 100, 85)
-    user_thresholds['lr_low'] = st.sidebar.slider("Ângulo Baixo", 10, 30, 20)
+    render_movement_header()
+    user_thresholds['lr_height'] = st.sidebar.slider("Ângulo Topo (Ombro)", 70, 100, 85)
+    user_thresholds['lr_low'] = st.sidebar.slider("Ângulo Baixo (Descanso)", 10, 30, 20)
+    
+    st.sidebar.markdown("---")
+    render_safety_header()
+    st.sidebar.info("Nenhuma regra de segurança extra configurada.")
 
 # ==========================================
 # 5. Upload e Setup
