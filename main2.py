@@ -152,11 +152,11 @@ st.sidebar.markdown("---")
 # =========================================================
 
 def render_movement_header():
-    st.sidebar.markdown("### 📏 1. Regras de Movimento (Estado)")
+    st.sidebar.markdown("### 📏 2.1 Regras de Movimento (Estado)")
     st.sidebar.caption("Parâmetros físicos que definem o exercício.")
 
 def render_safety_header():
-    st.sidebar.markdown("### 🛡️ 2. Regras do Usuário (Segurança)")
+    st.sidebar.markdown("### 🛡️ 2.2. Regras do Usuário (Segurança)")
     st.sidebar.caption("Alertas de correção e preferências.")
 
 # --- AGACHAMENTO BÚLGARO ---
@@ -565,3 +565,4 @@ if run_btn and video_path:
         
         status.success("Análise Concluída!")
         st.video(OUTPUT_PATH, format="video/webm")
+
