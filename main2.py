@@ -9,7 +9,60 @@ from mediapipe.tasks.python import vision
 import mediapipe as mp
 
 # ==========================================
-# 1. Funções Matemáticas e Auxiliares
+# 1. CONSTANTES DE MOVIMENTO (A FÍSICA DO EXERCÍCIO)
+# ==========================================
+# Estas regras definem O QUE É o movimento.
+# Elas ficam separadas das preferências do usuário.
+
+MOVEMENT_CONSTANTS = {
+    "Agachamento Búlgaro": {
+        "state_variable": "knee_angle",
+        "stages": {"UP": "EM PE", "DOWN": "AGACHAMENTO OK", "TRANSITION": "DESCENDO"}
+    },
+    "Agachamento Padrão": {
+        "state_variable": "femur_angle",
+        "stages": {"UP": "EM PE", "DOWN": "AGACHAMENTO OK", "TRANSITION": "DESCENDO"}
+    },
+    "Supino Máquina": {
+        "state_variable": "elbow_angle",
+        "stages": {"UP": "BRACO ESTICADO", "DOWN": "NA BASE", "TRANSITION": "EMPURRANDO"}
+    },
+    "Flexão de Braço": {
+        "state_variable": "elbow_angle",
+        "stages": {"UP": "EM CIMA (OK)", "DOWN": "EMBAIXO (OK)", "TRANSITION": "MOVIMENTO"}
+    },
+    "Rosca Direta": {
+        "state_variable": "elbow_angle",
+        "stages": {"UP": "ESTICADO", "DOWN": "CONTRAIDO", "TRANSITION": "EM ACAO"}
+    },
+    "Desenvolvimento (Ombro)": {
+        "state_variable": "elbow_angle",
+        "stages": {"UP": "TOPO (LOCKOUT)", "DOWN": "BASE", "TRANSITION": "MOVIMENTO"}
+    },
+    "Afundo (Lunge)": {
+        "state_variable": "knee_angle",
+        "stages": {"UP": "DESCENDO", "DOWN": "BOM AFUNDO", "TRANSITION": "DESCENDO"} 
+    },
+    "Levantamento Terra": {
+        "state_variable": "hip_angle",
+        "stages": {"UP": "TOPO (ERETO)", "DOWN": "POSICAO INICIAL", "TRANSITION": "LEVANTANDO"}
+    },
+    "Prancha (Plank)": {
+        "state_variable": "body_angle",
+        "stages": {"UP": "QUADRIL ALTO", "DOWN": "QUADRIL CAINDO", "TRANSITION": "PERFEITO"}
+    },
+    "Abdominal (Crunch)": {
+        "state_variable": "crunch_angle",
+        "stages": {"UP": "DEITADO", "DOWN": "CONTRAIDO", "TRANSITION": "MOVIMENTO"}
+    },
+    "Elevação Lateral": {
+        "state_variable": "shoulder_abd_angle",
+        "stages": {"UP": "ALTURA CORRETA", "DOWN": "DESCANSO", "TRANSITION": "SUBINDO"}
+    }
+}
+
+# ==========================================
+# 2. Funções Matemáticas e Auxiliares
 # ==========================================
 
 def calculate_angle(a, b, c):
@@ -47,7 +100,7 @@ def draw_visual_angle(frame, p1, p2, p3, angle_text, color=(255, 255, 255), labe
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2, cv2.LINE_AA)
 
 # ==========================================
-# 2. Configuração da Página
+# 3. Configuração da Página
 # ==========================================
 
 st.set_page_config(
@@ -56,25 +109,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. CSS para chamar atenção ao botão da sidebar (Animação de Pulso)
 st.markdown("""
     <style>
-        /* Cria uma animação de "pulso" vermelho */
         @keyframes pulse-red {
             0% { box-shadow: 0 0 0 0 rgba(255, 75, 75, 0.7); }
             70% { box-shadow: 0 0 0 10px rgba(255, 75, 75, 0); }
             100% { box-shadow: 0 0 0 0 rgba(255, 75, 75, 0); }
         }
-
-        /* Aplica a animação ao botão que abre a sidebar (quando ela está fechada) */
         [data-testid="stSidebarCollapsedControl"] {
             animation: pulse-red 2s infinite;
-            background-color: #FF4B4B; /* Deixa o fundo vermelho para destaque */
-            color: white; /* Seta branca */
+            background-color: #FF4B4B;
+            color: white;
             border-radius: 50%;
         }
-        
-        /* Opcional: Destaca também o botão de fechar dentro da sidebar */
         [data-testid="stSidebarNav"] > button {
              border: 2px solid #FF4B4B;
         }
@@ -84,127 +131,78 @@ st.markdown("""
 st.title("Análise de Exercícios com Visão Computacional")
 
 # ==========================================
-# 3. Sidebar: Seleção e Regras
+# 4. Sidebar: Seleção e Regras do Usuário
 # ==========================================
 
 st.sidebar.header("1. Seleção do Exercício")
 
-# Lista unificada: Seus 3 originais + Novos
-EXERCISE_OPTIONS = [
-    # --- SEUS ORIGINAIS ---
-    "Agachamento Búlgaro", 
-    "Agachamento Padrão", 
-    "Supino Máquina",
-    # --- NOVOS ADICIONADOS ---
-    "Flexão de Braço",
-    "Rosca Direta",
-    "Desenvolvimento (Ombro)",
-    "Afundo (Lunge)",
-    "Levantamento Terra",
-    "Prancha (Plank)",
-    "Abdominal (Crunch)",
-    "Elevação Lateral"
-]
-
+EXERCISE_OPTIONS = list(MOVEMENT_CONSTANTS.keys())
 exercise_type = st.sidebar.selectbox("Qual exercício analisar?", EXERCISE_OPTIONS)
 
-user_rules = {}
-st.sidebar.markdown("---")
-st.sidebar.header(f"2. Regras: {exercise_type}")
+# Dicionário que armazena APENAS as regras configuráveis pelo usuário
+user_thresholds = {}
 
-# --- LÓGICA DE REGRAS (MANTENDO AS SUAS E ADICIONANDO AS NOVAS) ---
+st.sidebar.markdown("---")
+st.sidebar.header(f"2. Calibragem: {exercise_type}")
+
+# --- CONFIGURAÇÃO DOS THRESHOLDS PELO USUÁRIO ---
 
 if exercise_type == "Agachamento Búlgaro":
-    st.sidebar.info("Regras Originais do Búlgaro")
-    check_knee = st.sidebar.checkbox("Analisar Profundidade", value=True)
-    if check_knee:
-        col1, col2 = st.sidebar.columns(2)
-        min_knee = col1.number_input("Ângulo Mín (Agachou)", 75)
-        max_knee = col2.number_input("Ângulo Máx (Em pé)", 160)
-        user_rules['knee'] = {'active': True, 'min': min_knee, 'max': max_knee}
-    else:
-        user_rules['knee'] = {'active': False}
-
+    st.sidebar.caption("Define quando conta como 'Agachou' ou 'Levantou'")
+    user_thresholds['knee_min'] = st.sidebar.number_input("Ângulo Mín (Baixo)", 75)
+    user_thresholds['knee_max'] = st.sidebar.number_input("Ângulo Máx (Alto)", 160)
+    
+    st.sidebar.caption("Segurança")
     check_torso = st.sidebar.checkbox("Alerta de Tronco", value=True)
-    if check_torso:
-        min_torso = st.sidebar.slider("Ângulo Mínimo Tronco", 50, 90, 70)
-        user_rules['torso'] = {'active': True, 'limit': min_torso}
-    else:
-        user_rules['torso'] = {'active': False}
+    user_thresholds['torso_limit'] = st.sidebar.slider("Limite Tronco", 50, 90, 70) if check_torso else None
 
 elif exercise_type == "Agachamento Padrão":
-    st.sidebar.info("Regras Originais do Agachamento")
-    val_stand = st.sidebar.slider("Limite 'Em Pé'", 0, 40, 32)
-    val_ok = st.sidebar.slider("Limite 'Agachamento OK'", 70, 110, 80)
-    user_rules['squat_limits'] = {'stand_max': val_stand, 'pass_min': val_ok}
+    st.sidebar.caption("Define os pontos de virada do movimento")
+    user_thresholds['stand_max'] = st.sidebar.slider("Limite 'Em Pé'", 0, 40, 32)
+    user_thresholds['pass_min'] = st.sidebar.slider("Limite 'Agachamento OK'", 70, 110, 80)
 
 elif exercise_type == "Supino Máquina":
-    st.sidebar.info("Regras Originais do Supino Máquina")
-    val_extended = st.sidebar.slider("Braço Esticado (Min)", 140, 180, 160)
-    val_flexed = st.sidebar.slider("Braço na Base (Max)", 40, 100, 80)
+    user_thresholds['extended_min'] = st.sidebar.slider("Braço Esticado (Min)", 140, 180, 160)
+    user_thresholds['flexed_max'] = st.sidebar.slider("Braço na Base (Max)", 40, 100, 80)
     
     check_safety = st.sidebar.checkbox("Alerta: Cotovelos Abertos", value=True)
-    safety_limit = 80
-    if check_safety:
-        safety_limit = st.sidebar.slider("Limite Abertura Cotovelo", 60, 90, 80)
-
-    user_rules['bench_press'] = {
-        'extended_min': val_extended, 'flexed_max': val_flexed,
-        'safety_check': check_safety, 'safety_limit': safety_limit
-    }
-
-# --- REGRAS PARA OS NOVOS EXERCÍCIOS ---
+    user_thresholds['safety_limit'] = st.sidebar.slider("Limite Abertura Cotovelo", 60, 90, 80) if check_safety else None
 
 elif exercise_type == "Flexão de Braço":
-    st.sidebar.caption("Regra: Amplitude do Cotovelo")
-    pu_down = st.sidebar.slider("Ângulo Baixo (Descida)", 60, 100, 90)
-    pu_up = st.sidebar.slider("Ângulo Alto (Subida)", 150, 180, 165)
-    user_rules = {'pu_down': pu_down, 'pu_up': pu_up}
+    user_thresholds['pu_down'] = st.sidebar.slider("Ângulo Baixo (Descida)", 60, 100, 90)
+    user_thresholds['pu_up'] = st.sidebar.slider("Ângulo Alto (Subida)", 150, 180, 165)
 
 elif exercise_type == "Rosca Direta":
-    st.sidebar.caption("Regra: Contração do Bíceps")
-    bc_flex = st.sidebar.slider("Contração Máxima", 30, 60, 45)
-    bc_ext = st.sidebar.slider("Extensão Completa", 140, 180, 160)
-    user_rules = {'bc_flex': bc_flex, 'bc_ext': bc_ext}
+    user_thresholds['bc_flex'] = st.sidebar.slider("Contração Máxima", 30, 60, 45)
+    user_thresholds['bc_ext'] = st.sidebar.slider("Extensão Completa", 140, 180, 160)
 
 elif exercise_type == "Desenvolvimento (Ombro)":
-    st.sidebar.caption("Regra: Lockout e Base")
-    sp_up = st.sidebar.slider("Braço Esticado", 150, 180, 165)
-    sp_down = st.sidebar.slider("Cotovelo na Base", 60, 100, 80)
-    user_rules = {'sp_up': sp_up, 'sp_down': sp_down}
+    user_thresholds['sp_up'] = st.sidebar.slider("Braço Esticado", 150, 180, 165)
+    user_thresholds['sp_down'] = st.sidebar.slider("Cotovelo na Base", 60, 100, 80)
 
 elif exercise_type == "Afundo (Lunge)":
-    st.sidebar.caption("Regra: Joelho Traseiro")
-    lg_knee = st.sidebar.slider("Profundidade Joelho", 70, 110, 90)
-    lg_torso = st.sidebar.slider("Inclinação Tronco", 70, 90, 80)
-    user_rules = {'lg_knee': lg_knee, 'lg_torso': lg_torso}
+    user_thresholds['lg_knee'] = st.sidebar.slider("Profundidade Joelho", 70, 110, 90)
+    check_torso = st.sidebar.checkbox("Alerta Tronco", value=True)
+    user_thresholds['lg_torso'] = st.sidebar.slider("Inclinação Tronco", 70, 90, 80) if check_torso else None
 
 elif exercise_type == "Levantamento Terra":
-    st.sidebar.caption("Regra: Extensão de Quadril")
-    dl_hip = st.sidebar.slider("Extensão Final", 160, 180, 170)
-    dl_back = st.sidebar.slider("Limite Flexão (Costas)", 40, 90, 60)
-    user_rules = {'dl_hip': dl_hip, 'dl_back': dl_back}
+    user_thresholds['dl_hip'] = st.sidebar.slider("Extensão Final", 160, 180, 170)
+    user_thresholds['dl_back'] = st.sidebar.slider("Limite Flexão (Costas)", 40, 90, 60)
 
 elif exercise_type == "Prancha (Plank)":
-    st.sidebar.caption("Regra: Alinhamento do Corpo")
-    pk_min = st.sidebar.slider("Mínimo (Cair Quadril)", 150, 175, 165)
-    pk_max = st.sidebar.slider("Máximo (Empinar)", 175, 190, 185)
-    user_rules = {'pk_min': pk_min, 'pk_max': pk_max}
+    user_thresholds['pk_min'] = st.sidebar.slider("Mínimo (Cair Quadril)", 150, 175, 165)
+    user_thresholds['pk_max'] = st.sidebar.slider("Máximo (Empinar)", 175, 190, 185)
 
 elif exercise_type == "Abdominal (Crunch)":
-    st.sidebar.caption("Regra: Flexão de Tronco")
-    cr_flex = st.sidebar.slider("Contração Máxima", 40, 100, 70)
-    cr_ext = st.sidebar.slider("Retorno (Deitado)", 110, 150, 130)
-    user_rules = {'cr_flex': cr_flex, 'cr_ext': cr_ext}
+    user_thresholds['cr_flex'] = st.sidebar.slider("Contração Máxima", 40, 100, 70)
+    user_thresholds['cr_ext'] = st.sidebar.slider("Retorno (Deitado)", 110, 150, 130)
 
 elif exercise_type == "Elevação Lateral":
-    st.sidebar.caption("Regra: Altura dos Ombros")
-    lr_height = st.sidebar.slider("Ângulo Topo", 70, 100, 85)
-    lr_low = st.sidebar.slider("Ângulo Baixo", 10, 30, 20)
-    user_rules = {'lr_height': lr_height, 'lr_low': lr_low}
+    user_thresholds['lr_height'] = st.sidebar.slider("Ângulo Topo", 70, 100, 85)
+    user_thresholds['lr_low'] = st.sidebar.slider("Ângulo Baixo", 10, 30, 20)
 
 # ==========================================
-# 4. Upload e Setup
+# 5. Upload e Setup
 # ==========================================
 
 st.sidebar.markdown("---")
@@ -220,7 +218,6 @@ if uploaded_file:
     tfile.write(uploaded_file.read())
     video_path = tfile.name
 else:
-    # Tenta usar vídeo padrão se existir
     default = os.path.join(BASE_DIR, "gravando4.mp4")
     if os.path.exists(default):
         video_path = default
@@ -231,19 +228,18 @@ if "last_state" not in st.session_state:
     st.session_state.last_state = "INICIO"
 
 # ==========================================
-# 5. Loop de Processamento
+# 6. Loop de Processamento
 # ==========================================
 
 if run_btn and video_path:
     if not os.path.exists(MODEL_PATH):
         st.error(f"⚠️ Erro: Arquivo do modelo '{MODEL_PATH}' não encontrado.")
     else:
-        # Setup MediaPipe Tasks
+        # Setup MediaPipe
         base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
         options = vision.PoseLandmarkerOptions(base_options=base_options, running_mode=vision.RunningMode.VIDEO)
         detector = vision.PoseLandmarker.create_from_options(options)
 
-        # Setup Video
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
         width_orig = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -260,6 +256,9 @@ if run_btn and video_path:
         timestamp_ms = 0
         frames_total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         frame_idx = 0
+        
+        # Pega as constantes do exercício atual
+        CONSTANTS = MOVEMENT_CONSTANTS[exercise_type]
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -277,7 +276,7 @@ if run_btn and video_path:
             main_angle_display = 0
             alert_msg = ""
             vis_p1, vis_p2, vis_p3 = None, None, None
-            label_angle = "" # Para nomear o ângulo na tela
+            label_angle = "" 
 
             if result.pose_landmarks:
                 lm = result.pose_landmarks[0]
@@ -291,46 +290,35 @@ if run_btn and video_path:
                 elb_l, wr_l = get_pt(13), get_pt(15)
 
                 # ========================================================
-                # INICIO DA LÓGICA DE EXERCÍCIOS
+                # APLICAÇÃO DAS REGRAS (SEPARADAS)
                 # ========================================================
-
-                # --------------------------------------------------------
-                # 1. SEUS EXERCÍCIOS ORIGINAIS (LÓGICA MANTIDA)
-                # --------------------------------------------------------
                 
+                # Agachamento Búlgaro
                 if exercise_type == "Agachamento Búlgaro":
-                    # Detecta qual perna está na frente
-                    if lm[27].y > lm[28].y: # Esq na frente
-                        s_idx, h_idx, k_idx, a_idx = 11, 23, 25, 27
-                    else:
-                        s_idx, h_idx, k_idx, a_idx = 12, 24, 26, 28
+                    # Detecta perna frontal
+                    if lm[27].y > lm[28].y: s_idx, h_idx, k_idx, a_idx = 11, 23, 25, 27
+                    else: s_idx, h_idx, k_idx, a_idx = 12, 24, 26, 28
+                    p_sh, p_hip, p_knee, p_ank = get_pt(s_idx), get_pt(h_idx), get_pt(k_idx), get_pt(a_idx)
+
+                    # Regra de Estado (Movimento)
+                    knee_angle = calculate_angle(p_hip, p_knee, p_ank)
+                    main_angle_display = knee_angle
+                    vis_p1, vis_p2, vis_p3 = p_hip, p_knee, p_ank
+                    label_angle = "Joelho"
+
+                    if knee_angle > user_thresholds['knee_max']: current_state = CONSTANTS['stages']['UP']
+                    elif user_thresholds['knee_min'] <= knee_angle <= user_thresholds['knee_max']: current_state = CONSTANTS['stages']['TRANSITION']
+                    elif knee_angle < user_thresholds['knee_min']: current_state = CONSTANTS['stages']['DOWN']
                     
-                    p_sh = get_pt(s_idx)
-                    p_hip = get_pt(h_idx)
-                    p_knee = get_pt(k_idx)
-                    p_ank = get_pt(a_idx)
-
-                    if user_rules['knee']['active']:
-                        knee_angle = calculate_angle(p_hip, p_knee, p_ank)
-                        main_angle_display = knee_angle
-                        vis_p1, vis_p2, vis_p3 = p_hip, p_knee, p_ank
-                        label_angle = "Joelho"
-
-                        limit_max_stand = user_rules['knee']['max'] 
-                        limit_min_squat = user_rules['knee']['min'] 
-
-                        if knee_angle > limit_max_stand: current_state = "EM PE"
-                        elif limit_min_squat <= knee_angle <= limit_max_stand: current_state = "DESCENDO"
-                        elif knee_angle < limit_min_squat: current_state = "AGACHAMENTO OK"
-                    
-                    if user_rules['torso']['active']:
+                    # Regra de Segurança (Opcional)
+                    if user_thresholds.get('torso_limit'):
                         torso_angle = calculate_angle(p_sh, p_hip, p_knee)
-                        if torso_angle < user_rules['torso']['limit']:
+                        if torso_angle < user_thresholds['torso_limit']:
                             alert_msg = "TRONCO INCLINADO"
                             cv2.line(frame, (int(p_sh[0]), int(p_sh[1])), (int(p_hip[0]), int(p_hip[1])), (0,0,255), 3)
 
+                # Agachamento Padrão
                 elif exercise_type == "Agachamento Padrão":
-                    # Usa ponto vertical virtual
                     vertical_ref = [knee_l[0], knee_l[1] - 100]
                     femur_angle = calculate_angle(hip_l, knee_l, vertical_ref)
                     
@@ -338,136 +326,142 @@ if run_btn and video_path:
                     vis_p1, vis_p2, vis_p3 = hip_l, knee_l, vertical_ref
                     label_angle = "Coxa Vert."
 
-                    lim_stand = user_rules['squat_limits']['stand_max']
-                    lim_pass = user_rules['squat_limits']['pass_min']
+                    if femur_angle <= user_thresholds['stand_max']: current_state = CONSTANTS['stages']['UP']
+                    elif user_thresholds['stand_max'] < femur_angle < user_thresholds['pass_min']: current_state = CONSTANTS['stages']['TRANSITION']
+                    elif femur_angle >= user_thresholds['pass_min']: current_state = CONSTANTS['stages']['DOWN']
 
-                    if femur_angle <= lim_stand: current_state = "EM PE"
-                    elif lim_stand < femur_angle < lim_pass: current_state = "DESCENDO"
-                    elif femur_angle >= lim_pass: current_state = "AGACHAMENTO OK"
-
+                # Supino Máquina
                 elif exercise_type == "Supino Máquina":
                     elbow_angle = calculate_angle(sh_l, elb_l, wr_l)
                     main_angle_display = elbow_angle
                     vis_p1, vis_p2, vis_p3 = sh_l, elb_l, wr_l
                     label_angle = "Cotovelo"
 
-                    limit_ext = user_rules['bench_press']['extended_min'] 
-                    limit_flex = user_rules['bench_press']['flexed_max']  
+                    if elbow_angle >= user_thresholds['extended_min']: current_state = CONSTANTS['stages']['UP']
+                    elif elbow_angle <= user_thresholds['flexed_max']: current_state = CONSTANTS['stages']['DOWN']
+                    else: current_state = CONSTANTS['stages']['TRANSITION']
 
-                    if elbow_angle >= limit_ext: current_state = "BRACO ESTICADO"
-                    elif elbow_angle <= limit_flex: current_state = "NA BASE"
-                    else: current_state = "EMPURRANDO"
-
-                    if user_rules['bench_press']['safety_check']:
+                    if user_thresholds.get('safety_limit'):
                         abduction_angle = calculate_angle(hip_l, sh_l, elb_l)
-                        if abduction_angle > user_rules['bench_press']['safety_limit']:
+                        if abduction_angle > user_thresholds['safety_limit']:
                             alert_msg = "COTOVELOS MUITO ABERTOS!"
                             cv2.line(frame, (int(sh_l[0]), int(sh_l[1])), (int(elb_l[0]), int(elb_l[1])), (0, 0, 255), 3)
 
-                # --------------------------------------------------------
-                # 2. NOVOS EXERCÍCIOS ADICIONADOS
-                # --------------------------------------------------------
-
+                # Flexão de Braço
                 elif exercise_type == "Flexão de Braço":
                     angle_elb = calculate_angle(sh_l, elb_l, wr_l)
                     main_angle_display = angle_elb
                     vis_p1, vis_p2, vis_p3 = sh_l, elb_l, wr_l
                     label_angle = "Cotovelo"
 
-                    if angle_elb < user_rules['pu_down']: current_state = "EMBAIXO (OK)"
-                    elif angle_elb > user_rules['pu_up']: current_state = "EM CIMA (OK)"
-                    else: current_state = "MOVIMENTO"
+                    if angle_elb < user_thresholds['pu_down']: current_state = CONSTANTS['stages']['DOWN']
+                    elif angle_elb > user_thresholds['pu_up']: current_state = CONSTANTS['stages']['UP']
+                    else: current_state = CONSTANTS['stages']['TRANSITION']
 
+                # Rosca Direta
                 elif exercise_type == "Rosca Direta":
                     angle_elb = calculate_angle(sh_l, elb_l, wr_l)
                     main_angle_display = angle_elb
                     vis_p1, vis_p2, vis_p3 = sh_l, elb_l, wr_l
                     label_angle = "Biceps"
 
-                    if angle_elb < user_rules['bc_flex']: current_state = "CONTRAIDO"
-                    elif angle_elb > user_rules['bc_ext']: current_state = "ESTICADO"
-                    else: current_state = "EM ACAO"
+                    if angle_elb < user_thresholds['bc_flex']: current_state = CONSTANTS['stages']['DOWN']
+                    elif angle_elb > user_thresholds['bc_ext']: current_state = CONSTANTS['stages']['UP']
+                    else: current_state = CONSTANTS['stages']['TRANSITION']
 
+                # Desenvolvimento (Ombro)
                 elif exercise_type == "Desenvolvimento (Ombro)":
                     angle_elb = calculate_angle(sh_l, elb_l, wr_l)
                     main_angle_display = angle_elb
                     vis_p1, vis_p2, vis_p3 = sh_l, elb_l, wr_l
 
-                    if angle_elb > user_rules['sp_up']: current_state = "TOPO (LOCKOUT)"
-                    elif angle_elb < user_rules['sp_down']: current_state = "BASE"
-                    else: current_state = "MOVIMENTO"
+                    if angle_elb > user_thresholds['sp_up']: current_state = CONSTANTS['stages']['UP']
+                    elif angle_elb < user_thresholds['sp_down']: current_state = CONSTANTS['stages']['DOWN']
+                    else: current_state = CONSTANTS['stages']['TRANSITION']
 
+                # Afundo (Lunge)
                 elif exercise_type == "Afundo (Lunge)":
                     angle_knee = calculate_angle(hip_l, knee_l, ank_l)
                     main_angle_display = angle_knee
                     vis_p1, vis_p2, vis_p3 = hip_l, knee_l, ank_l
                     label_angle = "Joelho"
-
-                    angle_torso = calculate_angle(sh_l, hip_l, knee_l)
                     
-                    if angle_knee <= user_rules['lg_knee']: current_state = "BOM AFUNDO"
-                    else: current_state = "DESCENDO"
+                    if angle_knee <= user_thresholds['lg_knee']: current_state = CONSTANTS['stages']['DOWN']
+                    else: current_state = CONSTANTS['stages']['UP']
                         
-                    if angle_torso < user_rules['lg_torso']: alert_msg = "POSTURA RUIM"
+                    if user_thresholds.get('lg_torso'):
+                        angle_torso = calculate_angle(sh_l, hip_l, knee_l)
+                        if angle_torso < user_thresholds['lg_torso']: alert_msg = "POSTURA RUIM"
 
+                # Levantamento Terra
                 elif exercise_type == "Levantamento Terra":
                     angle_hip = calculate_angle(sh_l, hip_l, knee_l)
                     main_angle_display = angle_hip
                     vis_p1, vis_p2, vis_p3 = sh_l, hip_l, knee_l
                     label_angle = "Quadril"
 
-                    if angle_hip > user_rules['dl_hip']: current_state = "TOPO (ERETO)"
-                    elif angle_hip < user_rules['dl_back']: current_state = "POSICAO INICIAL"
-                    else: current_state = "LEVANTANDO"
+                    if angle_hip > user_thresholds['dl_hip']: current_state = CONSTANTS['stages']['UP']
+                    elif angle_hip < user_thresholds['dl_back']: current_state = CONSTANTS['stages']['DOWN']
+                    else: current_state = CONSTANTS['stages']['TRANSITION']
 
+                # Prancha (Plank)
                 elif exercise_type == "Prancha (Plank)":
                     angle_body = calculate_angle(sh_l, hip_l, ank_l)
                     main_angle_display = angle_body
                     vis_p1, vis_p2, vis_p3 = sh_l, hip_l, ank_l
                     label_angle = "Alinhamento"
 
-                    if user_rules['pk_min'] <= angle_body <= user_rules['pk_max']: current_state = "PERFEITO"
-                    elif angle_body < user_rules['pk_min']: current_state = "QUADRIL CAINDO"
-                    else: current_state = "QUADRIL ALTO"
+                    if user_thresholds['pk_min'] <= angle_body <= user_thresholds['pk_max']: current_state = CONSTANTS['stages']['TRANSITION']
+                    elif angle_body < user_thresholds['pk_min']: current_state = CONSTANTS['stages']['DOWN']
+                    else: current_state = CONSTANTS['stages']['UP']
 
+                # Abdominal (Crunch)
                 elif exercise_type == "Abdominal (Crunch)":
                     angle_crunch = calculate_angle(sh_l, hip_l, knee_l)
                     main_angle_display = angle_crunch
                     vis_p1, vis_p2, vis_p3 = sh_l, hip_l, knee_l
 
-                    if angle_crunch < user_rules['cr_flex']: current_state = "CONTRAIDO"
-                    elif angle_crunch > user_rules['cr_ext']: current_state = "DEITADO"
-                    else: current_state = "MOVIMENTO"
+                    if angle_crunch < user_thresholds['cr_flex']: current_state = CONSTANTS['stages']['DOWN']
+                    elif angle_crunch > user_thresholds['cr_ext']: current_state = CONSTANTS['stages']['UP']
+                    else: current_state = CONSTANTS['stages']['TRANSITION']
 
+                # Elevação Lateral
                 elif exercise_type == "Elevação Lateral":
                     angle_abd = calculate_angle(hip_l, sh_l, elb_l)
                     main_angle_display = angle_abd
                     vis_p1, vis_p2, vis_p3 = hip_l, sh_l, elb_l
                     label_angle = "Ombro"
 
-                    if angle_abd >= user_rules['lr_height']: current_state = "ALTURA CORRETA"
-                    elif angle_abd < user_rules['lr_low']: current_state = "DESCANSO"
-                    else: current_state = "SUBINDO"
+                    if angle_abd >= user_thresholds['lr_height']: current_state = CONSTANTS['stages']['UP']
+                    elif angle_abd < user_thresholds['lr_low']: current_state = CONSTANTS['stages']['DOWN']
+                    else: current_state = CONSTANTS['stages']['TRANSITION']
 
-                # --------------------------------------------------------
-                # FIM DA LÓGICA / ATUALIZAÇÃO DE UI
-                # --------------------------------------------------------
+                # ========================================================
+                # ATUALIZAÇÃO DE UI E ESTADOS
+                # ========================================================
 
                 st.session_state.last_state = current_state
 
-                # Cores baseadas no estado
-                color_map = {
-                    "AGACHAMENTO OK": (0, 255, 0), "EM PE": (0, 255, 255),
-                    "BRACO ESTICADO": (0, 255, 0), "NA BASE": (0, 255, 255),
-                    "EMBAIXO (OK)": (0, 255, 0), "CONTRAIDO": (0, 255, 0),
-                    "TOPO (LOCKOUT)": (0, 255, 0), "PERFEITO": (0, 255, 0),
-                    "ALTURA CORRETA": (0, 255, 0), "BOM AFUNDO": (0, 255, 0)
-                }
-                # Pega a cor ou usa Branco se não achar
-                s_color = color_map.get(current_state, (255, 255, 255))
-                # Se for um estado de erro (vermelho)
-                if "CAINDO" in current_state or "RUIM" in current_state: s_color = (0, 0, 255)
+                # Cores
+                # Verde para Sucesso (Agachamento OK, Braço Esticado, etc)
+                # Amarelo/Laranja para Transição
+                # Vermelho para Erro
+                
+                s_color = (255, 255, 255) # Padrão
+                
+                # Verifica se o estado atual é um dos estados "finais" de sucesso
+                if current_state == CONSTANTS['stages']['DOWN'] or current_state == CONSTANTS['stages']['UP']:
+                    # Em alguns exercícios, UP é bom, em outros DOWN é bom.
+                    # Simplificação: Se não for 'transition', pinta de Verde/Azul
+                    s_color = (0, 255, 0)
+                else:
+                    s_color = (0, 255, 255) # Transição (Amarelo)
 
+                # Se houver alerta de segurança, sobrepõe com vermelho
+                if alert_msg:
+                     s_color = (0, 0, 255)
+
+                # Desenha Linhas de Angulo
                 if vis_p1:
                     draw_visual_angle(frame, vis_p1, vis_p2, vis_p3, f"{int(main_angle_display)}", s_color, label_angle)
 
@@ -491,7 +485,3 @@ if run_btn and video_path:
         
         status.success("Análise Concluída!")
         st.video(OUTPUT_PATH, format="video/webm")
-
-
-
-
