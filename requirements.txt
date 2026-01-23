@@ -8,4 +8,5 @@ google-auth
 extra-streamlit-components
 
 requests
+fpdf
 
