@@ -9,6 +9,9 @@ import json
 import datetime
 import requests
 
+# --- BIBLIOTECA DE PDF ---
+from fpdf import FPDF
+
 # --- BIBLIOTECA DE COOKIES ---
 import extra_streamlit_components as stx
 
@@ -30,12 +33,89 @@ st.set_page_config(
 )
 
 # ==========================================
-# 1. GERENCIADOR DE COOKIES
+# 1. FUNÇÕES AUXILIARES (PDF E COOKIES)
 # ==========================================
 def get_manager():
     return stx.CookieManager()
 
 cookie_manager = get_manager()
+
+# --- GERADOR DE PDF ---
+def gerar_relatorio_pdf(username, exercicio, dados_log, placar, config_usada):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # 1. Cabeçalho
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, f"Relatorio de Performance: {exercicio}", ln=True, align="C")
+    
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(0, 10, f"Atleta: {username} | Data: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
+    pdf.ln(5)
+
+    # 2. Resumo (Placar)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, "Resumo da Sessao", ln=True)
+    pdf.set_font("Arial", "", 11)
+    pdf.cell(0, 8, f"Total de Repeticoes: {placar['total']}", ln=True)
+    pdf.cell(0, 8, f"Execucoes Corretas: {placar['ok']}", ln=True)
+    pdf.cell(0, 8, f"Execucoes com Erro: {placar['no']}", ln=True)
+    pdf.ln(5)
+
+    # 3. Regras e Parâmetros Utilizados
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, "Parametros e Regras de Seguranca", ln=True)
+    pdf.set_font("Arial", "I", 9)
+    pdf.multi_cell(0, 5, "Abaixo estao os angulos de corte (thresholds) e regras de seguranca ativos durante esta analise:")
+    pdf.ln(2)
+    
+    pdf.set_font("Courier", "", 9)
+    # Itera sobre o dicionário de configs para mostrar o que foi usado
+    for chave, valor in config_usada.items():
+        # Limpa o nome da chave para ficar legível
+        nome_param = chave.replace(f"{exercicio}_", "").upper()
+        # Converte booleanos para texto
+        if isinstance(valor, bool):
+            val_str = "ATIVADO" if valor else "DESATIVADO"
+        else:
+            val_str = str(valor)
+        pdf.cell(0, 5, f"{nome_param}: {val_str}", ln=True)
+    pdf.ln(5)
+
+    # 4. Detalhamento Repetição a Repetição
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, "Detalhamento por Repeticao", ln=True)
+    
+    # Cabeçalho da Tabela
+    pdf.set_fill_color(200, 220, 255)
+    pdf.set_font("Arial", "B", 9)
+    pdf.cell(20, 8, "REP #", 1, 0, 'C', 1)
+    pdf.cell(30, 8, "STATUS", 1, 0, 'C', 1)
+    pdf.cell(30, 8, "TEMPO", 1, 0, 'C', 1)
+    pdf.cell(0, 8, "OBSERVACOES / ERROS", 1, 1, 'C', 1)
+
+    # Linhas da Tabela
+    pdf.set_font("Arial", "", 9)
+    for log in dados_log:
+        status_txt = "CORRETO" if log['status'] else "ERRO"
+        
+        # Cor simples para diferenciar (apenas visualmente no código, PDF padrão P&B/Azul)
+        if log['status']:
+            pdf.set_text_color(0, 100, 0) # Verde Escuro
+        else:
+            pdf.set_text_color(200, 0, 0) # Vermelho
+        
+        pdf.cell(20, 8, str(log['rep']), 1, 0, 'C')
+        pdf.cell(30, 8, status_txt, 1, 0, 'C')
+        
+        pdf.set_text_color(0, 0, 0) # Volta pra preto
+        pdf.cell(30, 8, log['tempo'], 1, 0, 'C')
+        
+        erros_msg = log['erros'] if log['erros'] else "-"
+        # Truncar msg se for muito longa pra caber numa linha simples (ou usar multi_cell futuramente)
+        pdf.cell(0, 8, erros_msg[:50], 1, 1, 'L')
+
+    return pdf.output(dest="S").encode("latin-1")
 
 # ==========================================
 # 2. SISTEMA DE LOGIN E BANCO DE DADOS
@@ -218,13 +298,16 @@ def draw_visual_angle(frame, p1, p2, p3, text, color=(255,255,255), label=""):
 st.sidebar.header("1. Exercício & Configs")
 EXERCISE_OPTIONS = list(MOVEMENT_CONSTANTS.keys())
 
-# --- FUNÇÃO DE RESET AUTOMÁTICO ---
+# --- FUNÇÃO DE RESET AUTOMÁTICO E LOGS ---
 def reset_counters():
     st.session_state.counter_total = 0
     st.session_state.counter_ok = 0
     st.session_state.counter_no = 0
     st.session_state.stage = None 
     st.session_state.has_error = False
+    # Novos logs para o relatório
+    st.session_state.rep_log = [] 
+    st.session_state.erros_na_rep_atual = set()
 
 # Selectbox com callback para zerar ao mudar
 exercise_type = st.sidebar.selectbox(
@@ -249,6 +332,9 @@ if "counter_ok" not in st.session_state: st.session_state.counter_ok = 0
 if "counter_no" not in st.session_state: st.session_state.counter_no = 0
 if "stage" not in st.session_state: st.session_state.stage = None 
 if "has_error" not in st.session_state: st.session_state.has_error = False
+# Novos estados se não existirem
+if "rep_log" not in st.session_state: st.session_state.rep_log = []
+if "erros_na_rep_atual" not in st.session_state: st.session_state.erros_na_rep_atual = set()
 
 # --- EXIBIÇÃO DE PLACAR NA SIDEBAR (CONTAINER ÚNICO) ---
 st.sidebar.markdown("### 📊 Placar Atual")
@@ -555,21 +641,43 @@ if run_btn and video_path:
                     if angle_abd >= user_thresholds['lr_height']: current_state = CONSTANTS['stages']['UP']; st.session_state.stage = "down"
                     elif angle_abd < user_thresholds['lr_low']: current_state = CONSTANTS['stages']['DOWN']
                     else: current_state = CONSTANTS['stages']['TRANSITION']
+                
+                # --- CAPTURA DE ERRO PARA RELATÓRIO ---
+                if alert_msg:
+                    st.session_state.has_error = True
+                    # Adiciona ao set para não repetir o mesmo erro 30 vezes num segundo
+                    st.session_state.erros_na_rep_atual.add(alert_msg)
 
                 # --- MÁQUINA DE ESTADOS DO CONTADOR ---
                 if current_state == COUNT_ON_RETURN_TO and st.session_state.stage == "down":
                     st.session_state.counter_total += 1
+                    
+                    # LOGGING: Prepara dados para o PDF
+                    tempo_video_str = f"{timestamp_ms/1000:.1f}s"
+                    erros_consolidados = ", ".join(st.session_state.erros_na_rep_atual)
+                    status_rep = True
+
                     if st.session_state.has_error:
                         st.session_state.counter_no += 1
+                        status_rep = False
                     else:
                         st.session_state.counter_ok += 1
                     
+                    # Salva no histórico
+                    st.session_state.rep_log.append({
+                        "rep": st.session_state.counter_total,
+                        "status": status_rep,
+                        "tempo": tempo_video_str,
+                        "erros": erros_consolidados
+                    })
+
                     # Atualiza placar lateral
                     update_sidebar_metrics()
                     
                     # Reset
                     st.session_state.stage = None
                     st.session_state.has_error = False
+                    st.session_state.erros_na_rep_atual = set() # Limpa erros para a próxima rep
 
                 st.session_state.last_state = current_state
                 s_color = (0, 255, 0) if current_state in [CONSTANTS['stages']['UP'], CONSTANTS['stages']['DOWN']] else (0, 255, 255)
@@ -577,7 +685,7 @@ if run_btn and video_path:
 
                 if vis_p1: draw_visual_angle(frame, vis_p1, vis_p2, vis_p3, f"{int(main_angle_display)}", s_color, label_angle)
                 
-                # PLACAR NO VÍDEO (Pode manter se quiser, mas agora a sidebar já mostra)
+                # PLACAR NO VÍDEO
                 cv2.rectangle(frame, (0, 0), (400, 100), (0, 0, 0), -1)
                 cv2.putText(frame, f"STATUS: {current_state}", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
                 if alert_msg: cv2.putText(frame, f"ALERTA: {alert_msg}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
@@ -596,12 +704,33 @@ if run_btn and video_path:
         detector.close()
         status.success("Análise Finalizada!")
         
-        # O vídeo fica aqui, sem as colunas de métricas embaixo
+        # --- BOTÃO DE EXPORTAÇÃO (PDF) ---
+        if st.session_state.counter_total > 0:
+            placar_final = {
+                "total": st.session_state.counter_total,
+                "ok": st.session_state.counter_ok,
+                "no": st.session_state.counter_no
+            }
+            
+            # Gera o PDF passando os thresholds atuais
+            pdf_bytes = gerar_relatorio_pdf(
+                st.session_state.get('user_name', 'Atleta'),
+                exercise_type,
+                st.session_state.rep_log,
+                placar_final,
+                user_thresholds
+            )
+            
+            st.download_button(
+                label="📄 Baixar Relatório Completo (PDF)",
+                data=pdf_bytes,
+                file_name=f"relatorio_{exercise_type.replace(' ', '_')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+        
+        # O vídeo fica aqui
         st.video(OUTPUT_PATH, format="video/webm")
 
     except Exception as e:
         st.error(f"Erro Crítico: {e}")
-
-
-
-
